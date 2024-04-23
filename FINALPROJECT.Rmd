@@ -1,0 +1,252 @@
+---
+title: "PROJECT"
+output:
+  html_document: default
+  pdf_document: default
+date: "2023-12-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+```
+
+
+
+```{r}
+
+
+mort.data <- read.delim("C:/Users/rageg/Downloads/mortality3.1.txt", header = TRUE, sep = "")
+```
+_Reading in the raw data._
+
+```{r}
+#Data Cleaning
+mort.data <- mort.data %>%
+  # Removing the Year column as it contains integers and strings, while the
+  # Year-code column provides the same information but with just the year (integer)
+  select(-Year, -MultipleCauseofdeathCode) %>%
+  # Renaming the Year.Code column as year
+  rename("Year" = "YearCode") %>%
+  rename("State" = "X.State.") %>%
+  rename("% Of total Deaths" = "X.ofTotalDeaths") %>%
+  # Removing the 2023 column as it is unreliable and is constantly being updated.
+  filter(Year != 2023)
+```
+_In this Analysis, i will attempt to answer the question "Is there any discernible change in the amount of deaths linked to the use of opioid drugs over the course of the opioid crisis from 1999-2020". I am interested in answering this question as from my recent observations of my own community, I have noticed an increase of drug addicted individuals in the state of Massachusetts, specifically Boston and the Suffolk county. Given this, I hypothesize that the regions that have the highest population locations, or cities, will experience the greatest amount of change in crude death rate, given their density and how fast opioid usage can spread. This would include major populous cities like Boston, Los Angeles, San Francisco, and the likes. To answer the question "Is there any discernible change in the amount of deaths linked to the use of opioid drugs over the course of the opioid crisis from 1999-2020", I start by cleaning the raw data that was retrieved. I filtered for redundant columns, incomplete columns, and renamed certain columns for clarity._
+```{r}
+
+#Mapping each state to a region by creating a new region column
+states <- unique(mort.data$State)
+
+state_to_region <- data.frame(
+  State = states,
+  Region = c(
+  "Southeast", "West", "Southwest", "Southeast", "West",
+  "West", "Northeast", "Northeast", "Northeast", "Southeast", "Southeast",
+  "West", "West", "Midwest", "Midwest", "Midwest",
+  "Midwest", "Southeast", "Southeast", "Northeast", "Northeast",
+  "Northeast", "Midwest", "Midwest", "Southeast", "Midwest",
+  "West", "Midwest", "West", "Northeast", "Northeast",
+  "Southwest", "Northeast", "Southeast", "Midwest", "Midwest",
+  "Southeast", "West", "Northeast", "Northeast", "Southeast", "Midwest",
+  "Southeast", "Southeast", "West", "Northeast", "Southeast",
+  "West", "Southeast", "Midwest", "West"
+)
+)
+
+
+# Merging the original data set with the mapping
+mort.data <- merge(mort.data, state_to_region, by = "State", all.x = TRUE)
+
+
+
+
+
+
+
+
+
+```
+_For the purpose of my analysis, The region that each state belonged to was necessary. Since the original raw data did not incorporate region as a column, the above chunk manually maps each state to its respective region by creating a new data frame with the states and their region and merging that data frame with our original raw data frame through the states column. The Mort.data(raw data frame) and state_to_region data frames are merged using the "merge" function where the "by = "States" " defines the mutual column that will merge the two frames. the  This output is the general Data Frame I will be using for my analysis._
+
+```{r}
+#First Plot: Total Deaths vs Year for Each state on the same graph, interactive.
+
+totalDeaths.df <- mort.data %>%
+  group_by(State, Year, Region) %>%
+  summarise(CrudeDeathRate = sum(Deaths)/Population*100000)
+
+p <- ggplot(totalDeaths.df, aes(x = Year, y = CrudeDeathRate, color = Region, group = State)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Total Deaths Trendline by State (1999-2020)",
+       x = "Year",
+       y = "CrudeDeathRate(per 100,000)") +
+  theme_minimal()
+
+
+ggplotly(p)
+
+
+
+
+
+
+```
+
+_This first above displays the trend line of Total Deaths vs the Year for each state. As can be observed, the regions are separated by the color. If you hover over each trend line, information in regards to the state, region, Crude Death rate, and Year is given. From this graphic, it can be observed that from the years 1999-2010 the slope was at a slow and steady increase, but an increase nonetheless for most of the states given by the general trend of all the lines. But from 2010-2020, notice a considerable difference at the rate of opioid related deaths increased, due to the second wave of the opiod crisis. A perfect example is West Virginia in the Southeast. As you hover over WV and follow its trend line on the interactive plot, notice the sudden spike of its slope from 2011 to 2020. Another such state is Maryland in the Northeast, where at first there was a small decrease from 2011 to 2013 almost as if in response to an arbitrary government policy, but again the same trend as WV emerges from 2013 to 2020. Although this cannot be said for all of the states, there are clearly discernible changes in the amount of deaths per year from the two ranges 1999-2010 and 2011 to 2020._
+
+```{r}
+#STEP 5:
+# Calculate slopes for each state
+slopes <- totalDeaths.df %>%
+  #Gets every unique state and region duo
+  group_by(Region, State) %>%
+  #Arrange the Year in ascending order
+  arrange(Year) %>%
+  #Gets the slope from the fitment of CrudeDeathRate vs Year
+  mutate(slope = lm(CrudeDeathRate ~ Year)$coefficients[2])
+
+#Identify the state with the steepest slope within each region
+max_slope <- slopes %>%
+  select(-Year)%>%
+  group_by(Region) %>%
+  slice(which.max(slope))
+  
+
+
+```
+_In the above chunk,I conducted a more detailed analysis of narcotic -related deaths from 1999 to 2020. I did this by first grouping the data by Region and State using the "group_by" function, and then arranged the frame in chronological order using the "arrange" function. I then used the mutate function to calculate the slope for each of the state by fitting a linear model(lm) of CrudeDeathRate against Year and extracted the slope from the coefficients by accessing coefficients[2], which is the slope. The second part filtered out the state witch has the maximum slope for each region. The Year column was removed as it was not necessary for analysis in this step. This is to see which state impacts the data the most for their respective regions and the state with the highest rate of drug use for each region._
+```{r}
+selectedStates <- max_slope$State
+
+topStates <- totalDeaths.df %>%
+  filter(State %in% selectedStates)
+
+
+pl3 <- ggplot(topStates, aes(x = Year, y = CrudeDeathRate, color = State, shape = Region)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Total Deaths Trendline for States with steepest Slope (1999-2020)",
+       x = "Year",
+       y = "CrudeDeathRate(Per 100,000)",
+       color = "State") +
+  theme_minimal()
+
+ggplotly(pl3)
+
+
+```
+_As can be observed from the above visual, all of the top states in each region in regards to slope follow the same trend within the ranges that was explained in the analytically hypothesis above. All of the states displayed a steady but slow slope from 1999 to 2010, but experienced a huge spike from 2011 to 2020._
+
+```{r}
+#I will now choose The state with the minimum slope for each region-step 8
+
+min_slope <- slopes %>%
+  select(-Year)%>%
+  group_by(Region) %>%
+  slice(which.min(slope))
+
+```
+_For contrast, using the same filtering methods, I also extracted the states with the lowest rate of increase in terms of narcotic related deaths within each region. This is also to further support my hypothesis of the discernible changes within the two time ranges (1999-2010 and 2011 to 2020)._
+
+```{r}
+selectedStates2 <- min_slope$State
+
+botStates <- totalDeaths.df %>%
+  filter(State %in% selectedStates2)
+
+pl4 <- ggplot(botStates, aes(x = Year, y = CrudeDeathRate, color = State, shape = Region)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Total Deaths Trendline for States with Least steep Slope (1999-2020)",
+       x = "Year",
+       y = "CrudeDeathRate(per 1000,000)",
+       color = "State") +
+  theme_minimal()
+
+ggplotly(pl4)
+
+
+
+```
+_Even within the contrasted graph of the states with the lowest rate of increase, the trend remained relatively true for the ranges. Of course, given that these states already have the lowest rate of increase in their respective region, there will obviously be some states that serve as outliers in which case the hypothesis would not apply. But for New York in the northeast and Arizona in the southwest, the trend remaineed true, in that the states experienced a relatively huge spike in CrudeDeathRate vs year from 2011 to 2020 when compared to 1999 to 2010. But for the other states(Nebraska, South Texas), there were barely noticeable changes, as explained before, given that these states are of the most extreme cases in which the change in deaths vs year is the least._
+
+```{r}
+breaks <- c(1999, 2010, Inf)
+
+#Create a new variable to categorize the years into two groups
+topStates <- topStates %>%
+  mutate(YearGroup = cut(Year, breaks = breaks, labels = c("1999-2010", "2011-2020"), include.lowest = TRUE))
+
+#Function to calculate lm statistics
+calculate_lm_stats <- function(data) {
+  lm_result <- lm(CrudeDeathRate ~ Year, data = data)
+  return(data.frame(
+    slope = coef(lm_result)[2],
+    intercept = coef(lm_result)[1],
+    r_squared = summary(lm_result)$r.squared
+  ))
+}
+
+#Calculate lm statistics for each state and year group combination
+lm_stats <- topStates %>%
+  group_by(State, Region, YearGroup) %>%
+  nest() %>%
+  mutate(lm_stats = map(data, calculate_lm_stats)) %>%
+  unnest(lm_stats)
+lm_stats <- lm_stats %>%
+  select(-data)
+
+```
+
+
+```{r}
+breaks <- c(1999, 2010, Inf)
+
+# Create a new variable to categorize the years into two groups
+botStates <- botStates %>%
+  mutate(YearGroup = cut(Year, breaks = breaks, labels = c("1999-2010", "2011-2020"), include.lowest = TRUE))
+
+# Function to calculate lm statistics
+calculate_lm_stats <- function(data) {
+  lm_result <- lm(CrudeDeathRate ~ Year, data = data)
+  return(data.frame(
+    slope = coef(lm_result)[2],
+    intercept = coef(lm_result)[1],
+    r_squared = summary(lm_result)$r.squared
+  ))
+}
+
+# Calculate lm statistics for each state and year group combination in botStates
+lm_stats_botStates <- botStates %>%
+  group_by(State, Region, YearGroup) %>%
+  nest() %>%
+  mutate(lm_stats = map(data, calculate_lm_stats)) %>%
+  unnest(lm_stats)
+lm_stats_botStates <- lm_stats_botStates %>%
+  select(-data)
+
+# Display the table
+#print(lm_stats_botStates)
+
+merged_lm_stats <- dplyr::bind_rows(
+  mutate(lm_stats, Type = "Top States"),
+  mutate(lm_stats_botStates, Type = "Bottom States")
+)
+
+
+# Display the modified data frame
+print(merged_lm_stats)
+
+```
+
+_In chunk above, The "mutate" function is used to create a new variable, YearGroup, based on the specified ranges. A function named "calculate_lm_stats" is defined to conduct linear regression analysis on CrudeDeathRate against Year within each group. This function returns a data frame containing slope, intercept, and R-squared values. The "group_by," "nest," and "map" functions are then utilized to group the data by State, Region, and YearGroup, nest the data for each group, and apply the "calculate_lm_stats" function, respectively. Finally, the "unnest" function is used to expand the nested lm_stats column, and unnecessary columns are removed using "select." The resulting lm_stats data frame provides valuable insights into the linear regression statistics for each state within the specified year groups and regions. The visualization of the models was not enough to support the Hypotheses, And so I extracted the summary of the lm model for the different time range and state combination for both the states with the steepest slope and states with the least steep slopes._
+
+_As observed, for most of the states within this group, the slope more than doubled from 1999-2010 to 2011-2020, further supporting the hypothesis of discernible changes during the opioid crisis from 1999 to 2020. Furthermore, the hypothesis that the discernible change will be more noticeable for states with more populous locations is proven to be incorrect for the most part. The states that were chosen for the steepest slopes within each region are not the states with the most population, aside from Ohio and New Mexico being the 2nd and 3rd most populated states in their respective region,  but did indeed go through a second opioid wave during 2011 to 2020_
+_I also extracted the states with the least steep slope from each region and as previously explained, most the states in this Data frame are not noticing any strong change in opioid usage from the two different ranges besides New York and Arizona whose slope increase almost 3.5 times for New York and almost 4 times for Arizona. This can be due to their vast population as these states are top two in their respective region in regards to their population. Despite these states being in the extreme case of the least overall rate of change, we can still notice a huge change of rate between the two time ranges for the ones previously mentioned._
+
